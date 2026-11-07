@@ -2,6 +2,7 @@
 """Linux MP3 player using Tkinter and ffplay (FFmpeg)."""
 import os
 import shutil
+import signal
 import subprocess
 import tkinter as tk
 from pathlib import Path
@@ -25,7 +26,7 @@ class Player:
 
         toolbar = ttk.Frame(root)
         toolbar.pack(pady=6)
-        for text, action in [
+        for i, (text, action) in enumerate([
             ("Dosya Ekle", self.add_files),
             ("Listeden Sil", self.remove_selected),
             ("Önceki", self.previous),
@@ -33,8 +34,8 @@ class Player:
             ("Duraklat / Devam", self.toggle_pause),
             ("Durdur", self.stop),
             ("Sonraki", self.next),
-        ]:
-            ttk.Button(toolbar, text=text, command=action).pack(side="left", padx=2)
+        ]):
+            ttk.Button(toolbar, text=text, command=action).grid(row=i // 4, column=i % 4, padx=2, pady=2)
 
         self.status = tk.StringVar(value="MP3 dosyası ekleyin")
         ttk.Label(root, textvariable=self.status).pack(pady=(4, 10))
@@ -81,6 +82,7 @@ class Player:
         self.listbox.selection_clear(0, tk.END)
         self.listbox.selection_set(index)
         self.listbox.see(index)
+        self.paused = False
         self.process = subprocess.Popen(
             ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", self.files[index]],
             stdin=subprocess.DEVNULL,
@@ -93,12 +95,14 @@ class Player:
     def toggle_pause(self):
         if not self.process or self.process.poll() is not None:
             return
-        # ffplay's pause keyboard command is only available with its input window.
-        # Keep pause/resume honest rather than claiming unsupported control.
-        self.status.set("Duraklatma bu sürümde desteklenmiyor.")
+        os.killpg(self.process.pid, signal.SIGCONT if self.paused else signal.SIGSTOP)
+        self.paused = not self.paused
+        self.status.set("Duraklatıldı" if self.paused else "Çalıyor: " + Path(self.files[self.index]).name)
 
     def stop(self):
         if self.process and self.process.poll() is None:
+            if self.paused:
+                os.killpg(self.process.pid, signal.SIGCONT)
             self.process.terminate()
             try:
                 self.process.wait(timeout=1)
@@ -106,6 +110,7 @@ class Player:
                 self.process.kill()
                 self.process.wait()
         self.process = None
+        self.paused = False
         self.status.set("Durduruldu")
 
     def previous(self):
