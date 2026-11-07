@@ -1,0 +1,41 @@
+name: Publish Linux release
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/publish-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package Linux version
+        run: |
+          python3 -m py_compile linux/mp3_player.py
+          mkdir -p package
+          cp linux/mp3_player.py package/
+          cat > package/README.txt <<'EOF'
+          MP MP3 - Linux
+          Requires Python 3 with Tkinter and FFmpeg ffplay.
+          Fedora: sudo dnf install python3-tkinter ffmpeg
+          Run: python3 mp3_player.py
+          EOF
+          cd package
+          zip -9 ../MP_mp3-Linux.zip mp3_player.py README.txt
+      - name: Publish separate Linux release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view linux-v0.1.0 >/dev/null 2>&1; then
+            echo "Linux release already exists; no changes made."
+          else
+            gh release create linux-v0.1.0 MP_mp3-Linux.zip \
+              --target "${{ github.sha }}" \
+              --title "Linux" \
+              --notes "MP MP3 Linux sürümü. MP3 oynatma, duraklatma, durdurma ve şarkı listesi."
+          fi
